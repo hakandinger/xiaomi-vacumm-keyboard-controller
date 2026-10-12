@@ -1,0 +1,3 @@
+robot token.txt
+robot reverse.txt
+.env.local
