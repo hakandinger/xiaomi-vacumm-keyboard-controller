@@ -21,7 +21,7 @@ DIRECTIONS = {
 }
 
 
-REFRESH_MOVE = 1.0      # tuş basılıyken komut yenileme (sn), 0 = kapalı
+REFRESH_MOVE = 0.5      # tuş basılıyken komut yenileme (sn), 0 = kapalı
 WARMUP_MAX = 30         # ısınma için en fazla bekleme (sn)
 
 robot = ViomiVacuum(IP, TOKEN)
@@ -130,6 +130,37 @@ def play_horn():
         print("Korna çalındı.", flush=True)
     except Exception as exc:
         print(f"Korna başarısız: {type(exc).__name__}: {exc}", flush=True)
+
+ACTIONS = {
+    pygame.K_h:      ("Şarja dön",         "set_charge",        [1]),
+    pygame.K_RETURN: ("Temizliği başlat",  "set_mode_withroom", [0, 1, 0]),
+    pygame.K_p:      ("Duraklat",          "set_mode_withroom", [0, 2, 0]),
+    pygame.K_x:      ("Temizliği bitir",   "set_mode",          [0]),
+}
+ACTION_COOLDOWN = 1.0
+last_action_time = 0.0
+led_on = True   # başlangıç durumu bilinmiyor, açık varsayıldı
+
+
+def run_action(label, method, params):
+    global last_action_time
+    now = time.monotonic()
+    if now - last_action_time < ACTION_COOLDOWN:
+        return
+    last_action_time = now
+    try:
+        with robot_lock:
+            result = send(method, params)
+        print(f"{label}: {result}", flush=True)
+    except Exception as exc:
+        print(f"{label} başarısız: {type(exc).__name__}", flush=True)
+
+
+def toggle_led():
+    global led_on
+    led_on = not led_on
+    run_action(f"LED {'açık' if led_on else 'kapalı'}", "set_light", [1 if led_on else 0])
+
 
 def set_desired(name, value):
     global desired_name, desired_value, revision
@@ -240,6 +271,13 @@ try:
                     running = False
                 elif event.key == pygame.K_SPACE:
                     threading.Thread(target=play_horn, daemon=True).start()
+                
+                elif event.key in ACTIONS:
+                    label, method, params = ACTIONS[event.key]
+                    threading.Thread(target=run_action, args=(label, method, params), daemon=True).start()
+                elif event.key == pygame.K_l:
+                    threading.Thread(target=toggle_led, daemon=True).start()
+
                 elif event.key in DIRECTIONS:
                     if event.key in pressed_keys:
                         pressed_keys.remove(event.key)
